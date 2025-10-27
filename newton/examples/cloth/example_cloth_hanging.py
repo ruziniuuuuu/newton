@@ -183,6 +183,7 @@ class Example:
             self.simulate()
 
         self.sim_time += self.frame_dt
+        print(f"Simulation time: {self.sim_time}")
 
     def test(self):
         if self.solver_type != "style3d":
