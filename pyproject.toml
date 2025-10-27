@@ -59,6 +59,8 @@ examples = [
     "GitPython>=3.1.44",    # for downloading assets via newton.utils.download_asset()
     "imgui_bundle>=1.92.0", # for viewer GUI
     "pyyaml>=6.0.2",
+    # synthnova assets_manager dependency for newton examples
+    "assets_manager @ git+ssh://git@git.galbot.com:6043/synth_nova/basic/assets_manager.git@develop",
 ]
 
 # Extra dependency needed to run examples that inference an RL policy
@@ -91,6 +93,9 @@ path = "newton/_version.py"
 
 [tool.hatch.build.targets.wheel]
 include = ["/newton", "/newton/licenses"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
