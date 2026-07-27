@@ -385,6 +385,7 @@ def _deformable_import_cable_graphs(ctx: _DeformableImportContext) -> tuple[set[
             density=graph_weight_density,
             has_shape_collision=collision_enabled,
             has_particle_collision=collision_enabled,
+            **usd._get_physics_material_contact_properties(rep.prim),
         )
         # Unlike single cables, the graph junction spanning tree is intrinsic topology, not a
         # caller choice, and only a tree (not the all-incident-edges joint set produced when
@@ -611,6 +612,7 @@ def _deformable_import_cable(ctx: _DeformableImportContext, consumed_cable_curve
             density=_mass_weight_density(prim, resolved_cable_density, deformable_read),
             has_shape_collision=collision_enabled,
             has_particle_collision=collision_enabled,
+            **usd._get_physics_material_contact_properties(prim),
         )
         if "shearStiffness" in cable_mat or "twistStiffness" in cable_mat:
             warnings.warn(
