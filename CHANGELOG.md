@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Add `ViewerViser.extension_context` for application-owned Viser scene and GUI extensions without exposing the viewer's server. (#4092)
+
 ## [1.5.0] - 2026-08-11
 
 ### Added
