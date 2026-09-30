@@ -11863,7 +11863,10 @@ class ModelBuilder:
                 )
 
     def _validate_joints(self):
-        """Validate that joints belong to an articulation, with two exceptions.
+        """Validate articulation topology and joint membership.
+
+        A joint in one articulation cannot have a parent body that belongs to a
+        different articulation. Connected joints must use the same articulation.
 
         Loop-closing joints are allowed when their child is already reachable through
         an articulation. Standalone world-root joints (``parent == -1``) are also
@@ -11878,12 +11881,15 @@ class ModelBuilder:
 
         with self._raw_array_access():
             joint_articulation = np.asarray(self.joint_articulation)
-            if np.all(joint_articulation >= 0):
-                return
             joint_parent = np.asarray(self.joint_parent)
             joint_child = np.asarray(self.joint_child)
+            body_count = self.body_count
 
         articulated = joint_articulation >= 0
+        self._validate_articulation_connections(joint_articulation, joint_parent, joint_child, articulated, body_count)
+        if np.all(articulated):
+            return
+
         articulated_bodies = np.concatenate((joint_parent[articulated], joint_child[articulated]))
         orphan_joints = np.flatnonzero(~articulated & (joint_parent != -1) & ~np.isin(joint_child, articulated_bodies))
 
@@ -11893,6 +11899,76 @@ class ModelBuilder:
                 f"Found {len(orphan_joints)} joint(s) not belonging to any articulation. "
                 f"Call add_articulation() for all joints. Orphan joints: {joint_labels}"
                 + ("..." if len(orphan_joints) > 5 else "")
+            )
+
+    def _validate_articulation_connections(
+        self,
+        joint_articulation: np.ndarray,
+        joint_parent: np.ndarray,
+        joint_child: np.ndarray,
+        articulated: np.ndarray,
+        body_count: int,
+    ) -> None:
+        """Reject articulated joints whose parent body belongs to another articulation.
+
+        A parent body belongs to an articulation when it is the child of one of that
+        articulation's joints. Malformed body indices are skipped here so that
+        structural validation can report them.
+
+        Args:
+            joint_articulation: Articulation index of each joint, or ``-1``.
+            joint_parent: Parent body index of each joint.
+            joint_child: Child body index of each joint.
+            articulated: Mask of joints that belong to an articulation.
+            body_count: Number of bodies in the builder.
+
+        Raises:
+            ValueError: If a joint connects two different articulations.
+        """
+        articulated_joints = np.flatnonzero(articulated)
+        if len(articulated_joints) == 0:
+            return
+
+        arts = joint_articulation[articulated_joints]
+        parents = joint_parent[articulated_joints]
+        children = joint_child[articulated_joints]
+
+        # Map each body to one articulation that contains it as a joint child.
+        body_articulation = np.full(body_count, -1, dtype=np.int64)
+        valid_children = (children >= 0) & (children < body_count)
+        body_articulation[children[valid_children]] = arts[valid_children]
+
+        valid_parents = (parents >= 0) & (parents < body_count)
+        parent_articulation = np.full(len(articulated_joints), -1, dtype=np.int64)
+        parent_articulation[valid_parents] = body_articulation[parents[valid_parents]]
+        candidates = np.flatnonzero((parent_articulation >= 0) & (parent_articulation != arts))
+        if len(candidates) == 0:
+            return
+
+        # A body can be the child of joints in several articulations, so confirm
+        # each candidate against the exact (child, articulation) membership.
+        body_articulations: dict[int, set[int]] = {}
+        for child, art in zip(children[valid_children].tolist(), arts[valid_children].tolist(), strict=True):
+            body_articulations.setdefault(child, set()).add(art)
+
+        for candidate in candidates.tolist():
+            articulation_idx = int(arts[candidate])
+            parent = int(parents[candidate])
+            parent_articulations = body_articulations[parent]
+            if articulation_idx in parent_articulations:
+                continue
+
+            joint_idx = int(articulated_joints[candidate])
+            parent_articulation_idx = min(parent_articulations)
+            articulation_label = self.articulation_label[articulation_idx]
+            parent_articulation_label = self.articulation_label[parent_articulation_idx]
+            joint_label = self.joint_label[joint_idx]
+            parent_label = self.body_label[parent]
+            raise ValueError(
+                f"Joint {joint_idx} ('{joint_label}') in articulation {articulation_idx} "
+                f"('{articulation_label}') has parent body {parent} ('{parent_label}') in articulation "
+                f"{parent_articulation_idx} ('{parent_articulation_label}'). Articulations cannot be connected "
+                "through joints. Add all connected joints to the same articulation."
             )
 
     def _validate_shapes(self) -> bool:
@@ -12634,8 +12710,9 @@ class ModelBuilder:
             skip_all_validations: If True, skips all validation checks. Use for maximum performance when
                 you are confident the model is valid. Default is False.
             skip_validation_worlds: If True, skips validation of world ordering and contiguity. Default is False.
-            skip_validation_joints: If True, skips articulation-membership validation. By default, non-root joints
-                must belong to an articulation or close a loop; standalone world-root joints are allowed.
+            skip_validation_joints: If True, skips articulation-topology and membership validation. By default,
+                joints cannot connect separate articulations, and non-root joints must belong to an articulation or
+                close a loop; standalone world-root joints are allowed.
             skip_validation_shapes: If True, skips validation of shapes having valid contact margins. Default is False.
             skip_validation_structure: If True, skips validation of structural invariants (body/joint references,
                 particle topology, array lengths, monotonicity). Default is False.
