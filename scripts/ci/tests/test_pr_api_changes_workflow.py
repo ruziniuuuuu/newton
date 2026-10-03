@@ -30,7 +30,10 @@ class TestPrApiChangesWorkflow(unittest.TestCase):
     def test_ci_runs_api_detector_tests(self):
         """Run CI-tool regression tests explicitly in the main CI workflow."""
         ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("uv run --no-project -m unittest discover -s scripts/ci/tests", ci_workflow)
+        self.assertIn(
+            "uv run --no-project --with packaging==26.2 -m unittest discover -s scripts/ci/tests",
+            ci_workflow,
+        )
 
     def test_external_prs_do_not_require_manual_approval(self):
         """Run trusted static analysis for external PRs without an approval gate."""
@@ -62,6 +65,14 @@ class TestPrApiChangesWorkflow(unittest.TestCase):
         self.assertIn("github.rest.issues.deleteComment", block)
         self.assertIn("github.rest.issues.updateComment", block)
         self.assertIn("github.rest.issues.createComment", block)
+
+    def test_api_review_can_update_pull_request_metadata(self):
+        """Grant write access for pull request labels and comments."""
+        self.assertIn(
+            "    permissions:\n      contents: read\n      pull-requests: write",
+            self.workflow,
+        )
+        self.assertNotIn("      issues: write", self.workflow)
 
 
 if __name__ == "__main__":
